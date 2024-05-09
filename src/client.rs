@@ -29,73 +29,78 @@ impl LeagueNotifier {
         std::thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().unwrap();
 
-            rt.block_on(async {
-                let mut friend_map: HashMap<String, FriendResource> = HashMap::new();
-
-                loop {
-                    let client = RequestClient::new();
-
-                    if let Ok(lcu_client) = LcuClient::new(true) {
-                        let res = lcu_client
-                            .get::<Vec<crate::types::FriendResource>>(
-                                "/lol-chat/v1/friends",
-                                &client,
-                            )
-                            .await;
-
-                        if let Ok(maybe_friends) = res {
-                            if let Some(friends) = maybe_friends {
-                                for friend in friends {
-                                    if (!friend_map.contains_key(&friend.puuid)) {
-                                        friend_map.insert(friend.puuid.clone(), friend);
-                                        continue;
-                                    }
-
-                                    // We already checked the key so unwrap
-                                    let friend_span = friend_map.get(&friend.puuid).unwrap();
-
-                                    // Friend status changed
-                                    if (!friend_span.availability.eq(&friend.availability)) {
-                                        // If friend is not online using the League client
-                                        if (!friend.product.eq("league_of_legends")) {
-                                            return;
-                                        }
-
-                                        match friend_span.availability.as_str() {
-                                            "mobile" | "offline" => {
-                                                // Friend is online
-                                                match friend.availability.as_str() {
-                                                    "chat" | "dnd" | "away" => {
-                                                        let riot_id = format!(
-                                                            "{}#{} is now online!",
-                                                            friend.game_name, friend.game_tag
-                                                        );
-
-                                                        let _ = Notification::new()
-                                                            .summary("League Notifier")
-                                                            .appname("League Notifier")
-                                                            .sound_name("Default")
-                                                            .body(riot_id.as_str())
-                                                            .show();
-                                                    }
-                                                    _ => {}
-                                                }
-                                            }
-                                            _ => {}
-                                        }
-
-                                        // Update friend map
-                                        friend_map.insert(friend.puuid.clone(), friend);
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-                }
-            });
+            rt.block_on(process_friends());
         });
+    }
+}
+
+async fn process_friends() {
+    let mut friend_map: HashMap<String, FriendResource> = HashMap::new();
+
+    loop {
+        let client = RequestClient::new();
+
+        if let Ok(lcu_client) = LcuClient::new(true) {
+            let res = lcu_client
+                .get::<Vec<crate::types::FriendResource>>("/lol-chat/v1/friends", &client)
+                .await;
+
+            if let Ok(maybe_friends) = res {
+                if let Some(friends) = maybe_friends {
+                    compare_friend_availability(friends, &mut friend_map);
+                }
+            }
+        }
+
+        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+    }
+}
+
+fn compare_friend_availability(
+    friends: Vec<FriendResource>,
+    friend_map: &mut HashMap<String, FriendResource>,
+) {
+    for friend in friends {
+        if (!friend_map.contains_key(&friend.puuid)) {
+            friend_map.insert(friend.puuid.clone(), friend);
+            continue;
+        }
+
+        // We already checked the key so unwrap
+        let friend_span = friend_map.get(&friend.puuid).unwrap();
+
+        // Friend status changed
+        if (friend_span.availability.ne(&friend.availability)) {
+            // If friend is not online using the League client
+            if (friend.product.ne("league_of_legends")) {
+                return;
+            }
+
+            match friend_span.availability.as_str() {
+                "mobile" | "offline" => {
+                    // Friend is online
+                    match friend.availability.as_str() {
+                        "chat" | "dnd" | "away" => {
+                            let riot_id =
+                                format!("{}#{} is now online!", friend.game_name, friend.game_tag);
+
+                            // Send notification
+                            let _ = Notification::new()
+                                .summary("League Notifier")
+                                .appname("League Notifier")
+                                .sound_name("Default")
+                                .body(riot_id.as_str())
+                                .show();
+                        }
+                        _ => {}
+                    }
+                }
+                _ => {}
+            }
+
+            // Update local friend map
+            friend_map.insert(friend.puuid.clone(), friend);
+        }
     }
 }
 
