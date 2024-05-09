@@ -62,7 +62,7 @@ async fn compare_friend_availability(
     friend_map: &mut HashMap<String, FriendResource>,
 ) {
     for friend in friends {
-        if (!friend_map.contains_key(&friend.puuid)) {
+        if !friend_map.contains_key(&friend.puuid) {
             friend_map.insert(friend.puuid.clone(), friend);
             continue;
         }
@@ -71,9 +71,9 @@ async fn compare_friend_availability(
         let friend_span = friend_map.get(&friend.puuid).unwrap();
 
         // Friend status changed
-        if (friend_span.availability.ne(&friend.availability)) {
+        if friend_span.availability.ne(&friend.availability) {
             // If friend is not online using the League client
-            if (friend.product.ne("league_of_legends")) {
+            if friend.product.ne("league_of_legends") {
                 return;
             }
 
