@@ -1,18 +1,10 @@
-use std::{
-    collections::HashMap,
-    env,
-    fs::File,
-    io::{self, Write},
-    process::exit,
-};
+use std::{collections::HashMap, env, fs::File, io::Write};
 
 use crossbeam_channel::Receiver;
 
 use irelia::{rest::LcuClient, RequestClient};
-use notify_rust::Notification;
-use tempfile::{tempdir, NamedTempFile};
 use tray_icon::{
-    menu::{AboutMetadata, Menu, MenuEvent, MenuItem, PredefinedMenuItem, SubmenuBuilder},
+    menu::{Menu, MenuEvent, MenuItem},
     TrayIcon, TrayIconBuilder, TrayIconEvent,
 };
 use windows::{
@@ -20,10 +12,7 @@ use windows::{
     Data::Xml::Dom::XmlDocument,
     UI::Notifications::{ToastNotification, ToastNotificationManager},
 };
-use winit::{
-    application::ApplicationHandler,
-    event_loop::{ControlFlow, EventLoop, EventLoopBuilder},
-};
+use winit::{application::ApplicationHandler, event_loop::ControlFlow};
 
 use crate::types::FriendResource;
 
@@ -139,7 +128,7 @@ async fn compare_friend_availability(
                             let toast =
                                 ToastNotification::CreateToastNotification(&toast_xml).unwrap();
 
-                            toast_notifier.Show(&toast);
+                            let _ = toast_notifier.Show(&toast);
                         }
                         _ => {}
                     }
@@ -166,13 +155,13 @@ impl Default for LeagueNotifier {
 }
 
 impl ApplicationHandler for LeagueNotifier {
-    fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {}
+    fn resumed(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop) {}
 
     fn window_event(
         &mut self,
-        event_loop: &winit::event_loop::ActiveEventLoop,
-        window_id: winit::window::WindowId,
-        event: winit::event::WindowEvent,
+        _event_loop: &winit::event_loop::ActiveEventLoop,
+        _window_id: winit::window::WindowId,
+        _event: winit::event::WindowEvent,
     ) {
     }
 
@@ -196,9 +185,7 @@ impl ApplicationHandler for LeagueNotifier {
                 let tray_menu = Menu::new();
                 self.quit_item = Some(MenuItem::new("Quit", true, None));
 
-                tray_menu.append(self.quit_item.as_ref().unwrap());
-
-                let quit_item = MenuItem::new("Quit", true, None);
+                _ = tray_menu.append(self.quit_item.as_ref().unwrap());
 
                 // We create the icon once the event loop is actually running
                 // to prevent issues like https://github.com/tauri-apps/tray-icon/issues/90
