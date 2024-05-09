@@ -1,9 +1,14 @@
-use std::{collections::HashMap, process::exit};
+use std::{
+    collections::HashMap,
+    io::{self, Write},
+    process::exit,
+};
 
 use crossbeam_channel::Receiver;
 
 use irelia::{rest::LcuClient, RequestClient};
 use notify_rust::Notification;
+use tempfile::NamedTempFile;
 use tray_icon::{
     menu::{AboutMetadata, Menu, MenuEvent, MenuItem, PredefinedMenuItem, SubmenuBuilder},
     TrayIcon, TrayIconBuilder, TrayIconEvent,
@@ -47,7 +52,7 @@ async fn process_friends() {
 
             if let Ok(maybe_friends) = res {
                 if let Some(friends) = maybe_friends {
-                    compare_friend_availability(friends, &mut friend_map);
+                    compare_friend_availability(friends, &mut friend_map).await;
                 }
             }
         }
@@ -56,7 +61,7 @@ async fn process_friends() {
     }
 }
 
-fn compare_friend_availability(
+async fn compare_friend_availability(
     friends: Vec<FriendResource>,
     friend_map: &mut HashMap<String, FriendResource>,
 ) {
@@ -84,11 +89,25 @@ fn compare_friend_availability(
                             let riot_id =
                                 format!("{}#{} is now online!", friend.game_name, friend.game_tag);
 
+                            // Get profile icon
+                            let icon_url = format!("https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/profile-icons/{}.jpg", friend.icon);
+                            let mut res = reqwest::get(icon_url).await.unwrap();
+                            let mut file = NamedTempFile::new().unwrap();
+
+                            while let Some(chunk) = res.chunk().await.unwrap() {
+                                file.write_all(&chunk);
+                            }
+
+                            let icon_path = file.into_temp_path();
+
                             // Send notification
                             let _ = Notification::new()
                                 .summary("League Notifier")
                                 .appname("League Notifier")
-                                .sound_name("Default")
+                                // https://learn.microsoft.com/en-us/uwp/schemas/tiles/toastschema/element-audio?redirectedfrom=MSDN
+                                // ms-winsoundevent:Notification.IM
+                                .sound_name("IM")
+                                .icon(icon_path.to_str().unwrap())
                                 .body(riot_id.as_str())
                                 .show();
                         }
@@ -171,6 +190,27 @@ impl ApplicationHandler for LeagueNotifier {
                     let rl = CFRunLoopGetMain();
                     CFRunLoopWakeUp(rl);
                 }
+
+                let icon_url = format!("https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/profile-icons/4569.jpg");
+                let mut res = reqwest::blocking::get(icon_url).unwrap();
+                let mut file = NamedTempFile::new().unwrap();
+                let mut buf: Vec<u8> = vec![];
+                res.copy_to(&mut buf).unwrap();
+                file.write_all(&mut buf.as_slice()).unwrap();
+
+                let icon_path = file.into_temp_path();
+                println!("{}", icon_path.display());
+
+                // Send notification
+                let _ = Notification::new()
+                    .summary("League Notifier")
+                    .appname("League Notifier")
+                    // https://learn.microsoft.com/en-us/uwp/schemas/tiles/toastschema/element-audio?redirectedfrom=MSDN
+                    // ms-winsoundevent:Notification.IM
+                    .sound_name("IM")
+                    .icon(icon_path.to_str().unwrap())
+                    .body("Test.")
+                    .show();
 
                 self.run();
             }
