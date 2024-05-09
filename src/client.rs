@@ -1,5 +1,7 @@
 use std::{
     collections::HashMap,
+    env,
+    fs::File,
     io::{self, Write},
     process::exit,
 };
@@ -8,10 +10,15 @@ use crossbeam_channel::Receiver;
 
 use irelia::{rest::LcuClient, RequestClient};
 use notify_rust::Notification;
-use tempfile::NamedTempFile;
+use tempfile::{tempdir, NamedTempFile};
 use tray_icon::{
     menu::{AboutMetadata, Menu, MenuEvent, MenuItem, PredefinedMenuItem, SubmenuBuilder},
     TrayIcon, TrayIconBuilder, TrayIconEvent,
+};
+use windows::{
+    core::HSTRING,
+    Data::Xml::Dom::XmlDocument,
+    UI::Notifications::{ToastNotification, ToastNotificationManager},
 };
 use winit::{
     application::ApplicationHandler,
@@ -86,30 +93,53 @@ async fn compare_friend_availability(
                     // Friend is online
                     match friend.availability.as_str() {
                         "chat" | "dnd" | "away" => {
-                            let riot_id =
-                                format!("{}#{} is now online!", friend.game_name, friend.game_tag);
+                            // Access temporary folder
+                            let dir = env::temp_dir();
+                            let file_path = dir
+                                .as_path()
+                                .join(format!("league-notifier-{}.jpg", friend.icon));
 
-                            // Get profile icon
-                            let icon_url = format!("https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/profile-icons/{}.jpg", friend.icon);
-                            let mut res = reqwest::get(icon_url).await.unwrap();
-                            let mut file = NamedTempFile::new().unwrap();
+                            // Download icon if it doesn't exist
+                            if !std::path::Path::exists(&file_path) {
+                                let icon_url = format!("https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/profile-icons/{}.jpg", friend.icon);
 
-                            while let Some(chunk) = res.chunk().await.unwrap() {
-                                file.write_all(&chunk);
+                                let mut res = reqwest::blocking::get(icon_url).unwrap();
+                                let mut file = File::create(file_path.clone()).unwrap();
+                                let mut buf: Vec<u8> = vec![];
+
+                                res.copy_to(&mut buf).unwrap();
+                                file.write_all(&mut buf.as_slice()).unwrap();
                             }
 
-                            let icon_path = file.into_temp_path();
+                            let app_id = "League Notifier";
+                            let toast_notifier =
+                                ToastNotificationManager::CreateToastNotifierWithId(
+                                    &HSTRING::from(app_id),
+                                )
+                                .unwrap();
 
-                            // Send notification
-                            let _ = Notification::new()
-                                .summary("League Notifier")
-                                .appname("League Notifier")
-                                // https://learn.microsoft.com/en-us/uwp/schemas/tiles/toastschema/element-audio?redirectedfrom=MSDN
-                                // ms-winsoundevent:Notification.IM
-                                .sound_name("IM")
-                                .icon(icon_path.to_str().unwrap())
-                                .body(riot_id.as_str())
-                                .show();
+                            let toast_xml = XmlDocument::new().unwrap();
+                            toast_xml
+                                .LoadXml(&HSTRING::from(format!(
+                                    "<toast activationType='protocol'>
+                        <visual>
+                            <binding template='ToastGeneric'>
+                                <text>{}#{} is now online!</text>
+                                <image placement='appLogoOverride' hint-crop='circle' src='{}'/>
+                            </binding>
+                        </visual>
+                        <audio src='ms-winsoundevent:Notification.IM' loop='false'/>
+                    </toast>",
+                                    friend.game_name.as_str(),
+                                    friend.game_tag.as_str(),
+                                    file_path.to_str().unwrap()
+                                )))
+                                .unwrap();
+
+                            let toast =
+                                ToastNotification::CreateToastNotification(&toast_xml).unwrap();
+
+                            toast_notifier.Show(&toast);
                         }
                         _ => {}
                     }
@@ -190,27 +220,6 @@ impl ApplicationHandler for LeagueNotifier {
                     let rl = CFRunLoopGetMain();
                     CFRunLoopWakeUp(rl);
                 }
-
-                let icon_url = format!("https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/profile-icons/4569.jpg");
-                let mut res = reqwest::blocking::get(icon_url).unwrap();
-                let mut file = NamedTempFile::new().unwrap();
-                let mut buf: Vec<u8> = vec![];
-                res.copy_to(&mut buf).unwrap();
-                file.write_all(&mut buf.as_slice()).unwrap();
-
-                let icon_path = file.into_temp_path();
-                println!("{}", icon_path.display());
-
-                // Send notification
-                let _ = Notification::new()
-                    .summary("League Notifier")
-                    .appname("League Notifier")
-                    // https://learn.microsoft.com/en-us/uwp/schemas/tiles/toastschema/element-audio?redirectedfrom=MSDN
-                    // ms-winsoundevent:Notification.IM
-                    .sound_name("IM")
-                    .icon(icon_path.to_str().unwrap())
-                    .body("Test.")
-                    .show();
 
                 self.run();
             }

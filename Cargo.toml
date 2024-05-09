@@ -16,4 +16,5 @@ serde_json = "1.0.117"
 tempfile = "3.10.1"
 tokio = { version = "1.37.0", features = ["full"] }
 tray-icon = "0.13.5"
+windows = "0.56.0"
 winit = "0.30.0"
