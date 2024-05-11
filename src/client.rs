@@ -1,4 +1,6 @@
-use std::{collections::HashMap, env, fs::File, io::Write};
+use std::{collections::HashMap, env};
+
+use tokio::{fs::File, io::AsyncWriteExt};
 
 use crossbeam_channel::Receiver;
 
@@ -74,6 +76,7 @@ async fn compare_friend_availability(
         if friend_span.availability.ne(&friend.availability) {
             // If friend is not online using the League client
             if friend.product.ne("league_of_legends") {
+                friend_map.insert(friend.puuid.clone(), friend);
                 return;
             }
 
@@ -92,12 +95,11 @@ async fn compare_friend_availability(
                             if !std::path::Path::exists(&file_path) {
                                 let icon_url = format!("https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/profile-icons/{}.jpg", friend.icon);
 
-                                let mut res = reqwest::blocking::get(icon_url).unwrap();
-                                let mut file = File::create(file_path.clone()).unwrap();
-                                let mut buf: Vec<u8> = vec![];
+                                let res = reqwest::get(icon_url).await.unwrap();
+                                let mut file = File::create(file_path.clone()).await.unwrap();
+                                let bytes = res.bytes().await.unwrap();
 
-                                res.copy_to(&mut buf).unwrap();
-                                file.write_all(&mut buf.as_slice()).unwrap();
+                                file.write_all(&bytes).await.unwrap();
                             }
 
                             let app_id = "League Notifier";
