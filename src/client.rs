@@ -137,10 +137,10 @@ async fn compare_friend_availability(
                 }
                 _ => {}
             }
-
-            // Update local friend map
-            friend_map.insert(friend.puuid.clone(), friend);
         }
+
+        // Update local friend map
+        friend_map.insert(friend.puuid.clone(), friend);
     }
 }
 
