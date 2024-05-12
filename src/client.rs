@@ -53,6 +53,9 @@ async fn process_friends() {
                     compare_friend_availability(friends, &mut friend_map).await;
                 }
             }
+        } else {
+            // Failed to connect. Clear friend map statuses.
+            friend_map.clear();
         }
 
         tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
